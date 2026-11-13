@@ -7,10 +7,10 @@
 //! and the byte spectrum back as typed-array views over this module's memory.
 //!
 //! Device access (`getUserMedia` / `getDisplayMedia`, OS permission prompts)
-//! cannot live here: wasm has no syscalls and no device handles, so Web Audio
+//! cannot live here: WASM has no syscalls and no device handles, so Web Audio
 //! always hands the samples over. Everything after that point is in Rust.
 //!
-//! Everything here is single-threaded by construction: one wasm instance, one
+//! Everything here is single-threaded by construction: one WASM instance, one
 //! JS main thread, no re-entrant calls.
 
 use core::cell::UnsafeCell;
@@ -34,7 +34,7 @@ const BAND_SPAN: f32 = 320.0;
 /// bins keep the meaning the renderer expects.
 const MIN_DB: f32 = -100.0;
 const MAX_DB: f32 = -30.0;
-/// Analyser-style exponential smoothing on the linear magnitude.
+/// Analyzer-style exponential smoothing on the linear magnitude.
 const BIN_SMOOTHING: f32 = 0.75;
 
 /// Geometry of one rod, laid out as five `f32` so JS can read every rod from a

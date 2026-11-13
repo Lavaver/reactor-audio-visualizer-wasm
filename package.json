@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "build:wasm": "cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown --release && node scripts/copy-wasm.mjs",
-    "predev": "pnpm run build:wasm",
+    "build:wasm:v2": "cargo build --manifest-path wasm_v2/Cargo.toml --target wasm32-unknown-unknown --release && node scripts/copy-wasm.mjs",
+    "build:wasm:all": "cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown --release && cargo build --manifest-path wasm_v2/Cargo.toml --target wasm32-unknown-unknown --release && node scripts/copy-wasm.mjs",
+    "dev:pre": "pnpm run build:wasm",
     "dev": "vite",
+    "dev:full": "pnpm run build:wasm && pnpm run dev",
     "prebuild": "pnpm run build:wasm",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "check:kernel": "pnpm run build:wasm && node scripts/kernel-check.mjs"
+    "check:kernel": "pnpm run build:wasm && node scripts/kernel-check.mjs",
+    "check:kernel:v2": "pnpm run build:wasm:v2 && node scripts/kernel-check-v2.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

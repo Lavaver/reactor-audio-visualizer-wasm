@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Kernel } from './wasm/kernel';
+import { KernelV2 } from './wasm/kernel-v2';
+import { KernelV1Backend, KernelV2Backend, probeKernelV2 } from './wasm/backend';
+import type { AnalysisBackend, KernelVersion } from './wasm/backend';
 import { ReactorEngine, type EngineSnapshot, type Readout } from './reactor/engine';
 import { webgl2Available, webgpuAvailable, type RendererKind } from './reactor/renderer';
 import { useGpu } from './hooks/useGpu';
@@ -27,6 +30,10 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [gpu, editGpu] = useGpu();
   const [renderer, setRenderer] = useState<RendererKind>('webgl');
+  /** Whether the optional v2 kernel was compiled. v2 stays off when it was not. */
+  const [v2Available, setV2Available] = useState(false);
+  /** Both backends stay alive once built, so switching back is instant. */
+  const backends = useRef<{ v1: AnalysisBackend | null; v2: AnalysisBackend | null }>({ v1: null, v2: null });
   const [availability, setAvailability] = useState<Record<RendererKind, boolean>>({
     canvas2d: true,
     webgl: true,
@@ -46,14 +53,16 @@ export default function App() {
     };
   }, []);
 
-  // Load the wasm kernel once, then hand it to the imperative engine.
+  // Load the v1 wasm kernel once, then hand it to the imperative engine.
   useEffect(() => {
     let cancelled = false;
     let created: ReactorEngine | null = null;
     Kernel.load()
       .then(kernel => {
         if (cancelled) return;
-        created = new ReactorEngine(kernel);
+        const v1 = new KernelV1Backend(kernel);
+        backends.current.v1 = v1;
+        created = new ReactorEngine(v1);
         // Publish the first snapshot in the same commit that installs `engine`.
         // Otherwise the next render is still the loading screen, the canvases do
         // not exist yet, and the attach effect below never finds its refs.
@@ -63,11 +72,46 @@ export default function App() {
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
       });
+    // v2 is optional, so its probe runs alongside and never blocks the boot: a
+    // miss only leaves one button disabled.
+    void probeKernelV2().then(bytes => {
+      if (!cancelled) setV2Available(bytes !== null);
+    });
     return () => {
       cancelled = true;
       created?.dispose();
     };
   }, []);
+
+  /**
+   * Switch the analysis kernel.
+   *
+   * v1 is already in memory; v2 is instantiated on first use, which is why this
+   * is async. If the module turns out to be unusable after the probe said it was,
+   * the promise resolves to null and the page simply stays on v1 instead of
+   * ending up with no backend at all.
+   */
+  const selectKernel = async (version: KernelVersion) => {
+    if (!engine || engine.kernelVersion === version) return;
+    if (version === 'v1') {
+      if (backends.current.v1) engine.setBackend(backends.current.v1);
+      return;
+    }
+    try {
+      if (!backends.current.v2) {
+        const kernel = await KernelV2.load();
+        if (!kernel) {
+          setV2Available(false);
+          return;
+        }
+        backends.current.v2 = new KernelV2Backend(kernel);
+      }
+      engine.setBackend(backends.current.v2);
+    } catch {
+      // A broken module must not leave the reactor without an analyser.
+      setV2Available(false);
+    }
+  };
 
   // React is a subscriber, not a driver: the engine pushes throttled snapshots.
   useEffect(() => {
@@ -175,7 +219,14 @@ export default function App() {
           </div>
           <SourcePanel engine={engine} snapshot={snapshot} />
           <ResponsePanel engine={engine} snapshot={snapshot} />
-          <Readouts spectrumRef={spectrumRef} readout={readout} analysis={snapshot.analysis} />
+          <Readouts
+            spectrumRef={spectrumRef}
+            readout={readout}
+            analysis={snapshot.analysis}
+            kernelVersion={snapshot.kernelVersion}
+            v2Available={v2Available}
+            onSelectKernel={version => void selectKernel(version)}
+          />
           <PerfPanel
             readout={readout}
             renderer={snapshot.renderer}

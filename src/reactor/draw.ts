@@ -28,12 +28,17 @@ export interface Scene {
   energy: number;
 }
 
-/** 48-bar mini spectrum. Reads the same wasm bins the kernel just consumed. */
+/**
+ * 48-bar mini spectrum. Reads whatever spectrum the active kernel publishes:
+ * v1 exposes a byte spectrum, v2 a calibrated 0..1 array, so `scale` says how to
+ * turn one entry into a 0..1 bar height.
+ */
 export function drawSpectrum(
   g: CanvasRenderingContext2D,
   width: number,
   height: number,
-  bins: Uint8Array,
+  bins: ArrayLike<number>,
+  scale: number,
   playing: boolean,
 ): void {
   g.clearRect(0, 0, width, height);
@@ -49,7 +54,7 @@ export function drawSpectrum(
 
   for (let i = 0; i < count; i++) {
     const index = Math.min(bins.length - 1, Math.floor(Math.pow(i / (count - 1), 2) * 700));
-    const value = playing ? bins[index] / 255 : 0;
+    const value = playing ? Math.max(0, Math.min(1, bins[index] * scale)) : 0;
     g.fillStyle = i < 12 ? '#d8b975' : i < 30 ? '#c3cf87' : '#95b1a1';
     const barHeight = Math.max(2, value * height);
     g.fillRect(i * slot, height - barHeight, barWidth, barHeight);

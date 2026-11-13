@@ -656,6 +656,24 @@ input[type=range] {
     gap: 6px
 }
 
+/* Two-state variant, used by the analysis-kernel switch. */
+.backend-switch.pair {
+    grid-template-columns: repeat(2, 1fr)
+}
+
+/* The kernel switch sits above the meters grid, so it carries the same quiet label
+   the meter cells use, plus the spacing that used to come from `margin-top`. */
+.kernel-switch {
+    margin-bottom: 14px
+}
+
+.kernel-switch>span {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--muted)
+}
+
 .backend {
     padding: 7px 4px;
     border: 1px solid #3b4436;
@@ -680,6 +698,103 @@ input[type=range] {
 .backend:disabled {
     opacity: .38;
     cursor: not-allowed
+}
+
+/* The v2 label is the one piece of coloured type in this panel.
+ *
+ * It is a solid hue, not a gradient clipped to the glyphs. `background-clip: text`
+ * only works together with `color: transparent`, and that pair has no safe failure
+ * mode: drop one declaration and the label vanishes instead of degrading. The
+ * multicolour lives on the border instead, where a browser that ignores
+ * `border-image` simply falls back to the `border-color` next to it.
+ *
+ * The hues deliberately leave the reactor's olive palette, so the colour cannot be
+ * mistaken for a state (warn / error / ok); it only says "this one is the flashy
+ * one". */
+.backend.vivid {
+    color: #ff6fab;
+    border-color: #6a4f8f;
+    border-image: linear-gradient(112deg, #a37cff, #ff5f9e 48%, #ffb24a) 1;
+    font-weight: 600;
+    text-shadow: 0 0 8px rgba(255, 111, 171, .35)
+}
+
+.backend.vivid:hover:not(:disabled) {
+    color: #ffa8cf;
+    text-shadow: 0 0 10px rgba(255, 111, 171, .55)
+}
+
+.backend.vivid.on {
+    color: #ffd0e6;
+    background: rgba(255, 111, 171, .14);
+    border-image: linear-gradient(112deg, #b892ff, #ff6fab 46%, #ffc24f) 1;
+    text-shadow: 0 0 11px rgba(255, 111, 171, .75)
+}
+
+/* Disabled wins over selected: an uncompiled v2 must not look available, so every
+   colour is replaced by the panel's muted ink. */
+.backend.vivid:disabled {
+    color: var(--muted);
+    border-image: none;
+    border-color: #3b4436;
+    background: none;
+    font-weight: 400;
+    text-shadow: none
+}
+
+/* The kernel description, now on the page instead of in a tooltip. Sits under the
+   buttons and belongs to whichever kernel is selected. */
+.kernel-note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.55;
+    color: #7d867a
+}
+
+/* The same paragraph, in v2's ink. Lighter than the button's #ff6fab because this
+   is 11px body text, not a label: at that size the saturated hue vibrates against
+   the near-black panel. */
+.kernel-note.vivid {
+    color: #ff9ec9
+}
+
+/* --- v2's ink, as a gradient ------------------------------------------------
+ *
+ * `background-clip: text` needs `color: transparent` to work, and its only failure
+ * mode is *the text disappearing* — so it is written as an enhancement inside
+ * `@supports`, never as the only path. The solid hues above stay as the real
+ * declarations and reappear verbatim in any engine that cannot clip to text.
+ *
+ * The clip is applied to a span inside the button and to the description
+ * paragraph, never to the `<button>` element itself: a form control is the one
+ * place this property has ever been seen to paint nothing at all. */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+    .backend.vivid>span,
+    .kernel-note.vivid {
+        background-image: linear-gradient(100deg, #b892ff 0%, #ff6fab 48%, #ffc24f 100%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent
+    }
+
+    .backend.vivid:hover:not(:disabled)>span {
+        background-image: linear-gradient(100deg, #ccb0ff 0%, #ff8fc0 48%, #ffd583 100%)
+    }
+
+    .backend.vivid.on>span {
+        background-image: linear-gradient(100deg, #c9a6ff 0%, #ff77b1 46%, #ffcf6b 100%)
+    }
+
+    .kernel-note.vivid {
+        background-image: linear-gradient(100deg, #c3a4ff 0%, #ff86b8 48%, #ffcf7d 100%)
+    }
+
+    /* An uncompiled v2 must not look available, and must not be invisible either:
+       drop the gradient and hand the ink back to the muted colour. */
+    .backend.vivid:disabled>span {
+        background-image: none;
+        -webkit-text-fill-color: currentColor
+    }
 }
 
 .backend-note {

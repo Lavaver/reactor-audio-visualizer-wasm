@@ -10,13 +10,12 @@ import { Canvas2dRenderer } from './canvas2d';
 import { WebglRenderer } from './gl';
 import { WebgpuRenderer } from './webgpu';
 import type { CoreRenderer, RendererKind } from './renderer';
-import { Kernel } from '../wasm/kernel';
+import type { AnalysisBackend, AnalysisMode, KernelVersion } from '../wasm/backend';
 import wasmUrl from '../generated/reactor_kernel.wasm?url';
 
 export type SourceMode = 'demo' | 'mic' | 'system' | 'file';
 
-/** Where the spectrum is computed, shown in the panel so it is not a guess. */
-export type AnalysisMode = 'worklet' | 'main';
+export type { AnalysisMode, KernelVersion };
 
 export interface DeviceOption {
   id: string;
@@ -47,6 +46,8 @@ export interface EngineSnapshot {
   devices: DeviceOption[] | null;
   deviceHint: string | null;
   analysis: AnalysisMode;
+  /** Analysis kernel actually running; v2 is only offered when it was built. */
+  kernelVersion: KernelVersion;
   /** Backend actually drawing right now; falls back if the requested one fails. */
   renderer: RendererKind;
   /** Why the requested backend was not used, if it was not. */
@@ -88,12 +89,6 @@ const WORKLET_DISABLED = /(?:^|[?&])noworklet=1/.test(window.location.search);
 const PRESERVE_DRAWING_BUFFER = /(?:^|[?&])preserve=1/.test(window.location.search);
 const LOOPBACK = /monitor|stereo.?mix|what u hear|wave out mix|loopback|blackhole|soundflower|立体声混音|回环/i;
 
-/**
- * The byte spectrum is a decibel value mapped onto 0..255; these two constants
- * must match `MIN_DB` / `MAX_DB` in `app/wasm/src/lib.rs`.
- */
-const MIN_DB = -100;
-const MAX_DB = -30;
 /** How far the peak hold drops per readout tick (~150 ms, so ≈10 dB/s). */
 const PEAK_DECAY_DB = 1.5;
 /**
@@ -110,21 +105,25 @@ const AUTO_SPIN = 0.078;
 const RGB_WIPE_MS = 1100;
 /** Frame-time samples kept for the FPS readouts: 120 frames ≈ 2 s at 60 fps. */
 const FRAME_SAMPLES = 120;
-
 /**
- * Byte -> linear power, precomputed once.
- *
- * Weighting the centroid by raw bytes is wrong: a silent high bin still reads
- * ~80/255, and there are far more high bins than low ones, so the noise floor
- * wins and the average lands around 8 kHz on bass-heavy music. Converting to
- * power first drops an empty bin to ~1e-8 and lets real content decide.
+ * How long a kernel switch takes to interpolate the rods from one version's shape
+ * to the other's, in seconds. This is a *dwell*, not an animation of its own: the
+ * interpolation is the rod easing the reactor always has, held at a slow setting
+ * for this long so 709 rods visibly morph instead of snapping.
  */
-const BIN_POWER = new Float32Array(256);
-for (let byte = 0; byte < 256; byte++) {
-  const decibels = MIN_DB + (byte / 255) * (MAX_DB - MIN_DB);
-  BIN_POWER[byte] = Math.pow(10, decibels / 10);
-}
-
+const SWITCH_SETTLE_S = 0.6;
+/**
+ * The smoothing value forced during [`SWITCH_SETTLE_S`]. Near the top of the
+ * kernel's range (0..0.95), where one frame covers ~6% of the remaining distance
+ * instead of ~15% — about 0.6 s to visually settle.
+ */
+const SWITCH_SETTLE_SMOOTHING = 0.94;
+/**
+ * One frame at the 60 Hz the animation is defined against, in milliseconds.
+ * Written as a division rather than `16.667` so the unit the kernel is handed is
+ * exactly one sixtieth of a second and not an approximation of it.
+ */
+const FRAME_MS = 1000 / 60;
 
 function formatTime(seconds: number): string {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -153,8 +152,11 @@ export class ReactorEngine {
   /** Backend the engine is running; may differ from the request after a fallback. */
   activeRenderer: RendererKind = 'webgl';
   private rendererNote: string | null = null;
-  readonly rodCount: number;
-  private readonly kernel: Kernel;
+  /**
+   * The analysis kernel. Swappable at runtime: v1 and v2 fill the same rod
+   * lattice, so a switch only replaces the arrays the frame loop reads.
+   */
+  private backend: AnalysisBackend;
   private disposed = false;
 
   private canvas: HTMLCanvasElement | null = null;
@@ -187,7 +189,6 @@ export class ReactorEngine {
   private worklet: AudioWorkletNode | null = null;
   private workletReady = false;
   private workletTried = false;
-  analysis: AnalysisMode = 'main';
   private source: AudioBufferSourceNode | MediaStreamAudioSourceNode | null = null;
   private stream: MediaStream | null = null;
   private demoNodes: AudioNode[] = [];
@@ -198,6 +199,11 @@ export class ReactorEngine {
   private playPending = false;
   /** Loudest meter reading since playback started, cleared whenever it stops. */
   private peakLevelDb: number | null = null;
+  /**
+   * Seconds left of the slow easing that interpolates the rods across a kernel
+   * switch. Zero means the reactor is easing at the user's own setting.
+   */
+  private switchSettle = 0;
   private session = 0;
   private startedAt = 0;
   private offset = 0;
@@ -224,9 +230,53 @@ export class ReactorEngine {
   private listeners = new Set<(snapshot: EngineSnapshot) => void>();
   private readoutListeners = new Set<(readout: Readout) => void>();
 
-  constructor(kernel: Kernel) {
-    this.kernel = kernel;
-    this.rodCount = kernel.rodCount;
+  constructor(backend: AnalysisBackend) {
+    this.backend = backend;
+  }
+
+  /** Rods in the lattice the active kernel builds. */
+  get rodCount(): number {
+    return this.backend.rodCount;
+  }
+
+  /** Which analysis kernel is running right now. */
+  get kernelVersion(): KernelVersion {
+    return this.backend.version;
+  }
+
+  /**
+   * Swap the analysis kernel without touching the audio graph.
+   *
+   * Both versions build the identical 709-rod lattice (the v2 check asserts it), so
+   * the renderer's GPU buffers stay valid: only the arrays the frame loop reads
+   * change identity, and those are re-read every frame.
+   *
+   * The rods are carried across instead of being reset. The two kernels disagree by
+   * up to ~50% on how tall a band should be — v2's display curve is louder on
+   * purpose — so a reset would collapse all 709 rods to the floor and rebuild them,
+   * which reads as a glitch. Handing the old shape to the new kernel as its starting
+   * point lets its own per-rod easing interpolate from "what v1 looked like" to
+   * "what v2 wants", and `switchSettle` below slows that easing down so the
+   * interpolation takes long enough to be seen.
+   */
+  setBackend(backend: AnalysisBackend): void {
+    if (this.backend.version === backend.version) return;
+    // The shape to interpolate from, captured before the old kernel is dropped.
+    const carried = Float32Array.from(this.backend.heights);
+    // Stop feeding the old kernel before it is dropped, so a worklet message
+    // cannot land in an instance nobody reads.
+    this.backend.setWorkletActive(false);
+    this.backend = backend;
+    this.backend.setChannels(this.channels);
+    // The worklet node outlives the swap, so a kernel that can use it must be
+    // told it is still there; a kernel that cannot (v2) ignores the call.
+    if (this.worklet && this.workletReady) this.backend.setWorkletActive(true);
+    // Clear the spectrum — it belongs to the kernel that measured it — but keep the
+    // rods, and seed them with the shape the previous kernel had reached.
+    this.backend.clearSpectrum();
+    this.backend.heights.set(carried);
+    this.switchSettle = SWITCH_SETTLE_S;
+    this.push();
   }
 
   // --- wiring ---------------------------------------------------------------
@@ -277,7 +327,7 @@ export class ReactorEngine {
   private createRenderer(kind: RendererKind): void {
     const canvas = this.canvas;
     if (!canvas) return;
-    const source = { rods: this.kernel.rods, stride: this.kernel.stride, count: this.kernel.rodCount };
+    const source = { rods: this.backend.rods, stride: this.backend.stride, count: this.backend.rodCount };
     this.rendererNote = null;
 
     if (kind === 'webgpu') {
@@ -354,7 +404,8 @@ export class ReactorEngine {
       rgbLights: this.rgbLights,
       devices: this.devices,
       deviceHint: this.deviceHint,
-      analysis: this.analysis,
+      analysis: this.backend.analysis,
+      kernelVersion: this.backend.version,
       renderer: this.activeRenderer,
       rendererNote: this.rendererNote,
     };
@@ -430,7 +481,7 @@ export class ReactorEngine {
 
   private applyChannels(value: number): void {
     this.channels = Math.max(4, Math.min(64, value));
-    this.kernel.setChannels(this.channels);
+    this.backend.setChannels(this.channels);
   }
 
   private autoChannelTarget(): number {
@@ -612,7 +663,7 @@ export class ReactorEngine {
       const analyser = audio.createAnalyser();
       // Only used as a tap: `fftSize` is the length of the block that
       // `getFloatTimeDomainData` hands us, and the kernel does its own FFT.
-      analyser.fftSize = this.kernel.fftSize;
+      analyser.fftSize = this.backend.fftSize;
       const master = audio.createGain();
       master.gain.value = this.volume;
       analyser.connect(master);
@@ -645,8 +696,11 @@ export class ReactorEngine {
   private async ensureWorklet(audio: AudioContext): Promise<void> {
     if (this.workletTried || !audio.audioWorklet) return;
     this.workletTried = true;
+    // v2 analyses inside its own asynchronous stage, in wasm, and has no byte
+    // spectrum for an audio-thread analyser to hand back.
+    if (!this.backend.workletCapable) return;
     if (WORKLET_DISABLED) {
-      this.analysis = 'main';
+      this.backend.setWorkletActive(false);
       return;
     }
     try {
@@ -659,7 +713,7 @@ export class ReactorEngine {
         outputChannelCount: [1],
         channelCount: 1,
         channelCountMode: 'explicit',
-        processorOptions: { module, fftSize: this.kernel.fftSize },
+        processorOptions: { module, fftSize: this.backend.fftSize },
       });
       // A zero-gain sink keeps the node in the pulled graph without adding sound.
       const sink = audio.createGain();
@@ -670,7 +724,7 @@ export class ReactorEngine {
       this.worklet = node;
       this.workletSink = sink;
     } catch {
-      this.analysis = 'main';
+      this.backend.setWorkletActive(false);
     }
   }
 
@@ -678,17 +732,17 @@ export class ReactorEngine {
     if (!data || typeof data !== 'object') return;
     const message = data as { type?: string; bins?: ArrayBuffer };
     if (message.type === 'bins' && message.bins) {
-      // Copy straight into wasm memory; `rk_step` reads the same buffer.
-      const incoming = new Uint8Array(message.bins);
-      this.kernel.bins.set(incoming.subarray(0, this.kernel.bins.length));
+      // Handed to the backend, which decides what to do with a byte spectrum:
+      // v1 copies it into wasm memory, v2 refuses it.
+      if (!this.backend.ingestBins(new Uint8Array(message.bins))) return;
       if (!this.workletReady) {
         this.workletReady = true;
-        this.analysis = 'worklet';
+        this.backend.setWorkletActive(true);
         this.push();
       }
     } else if (message.type === 'error') {
       this.workletReady = false;
-      this.analysis = 'main';
+      this.backend.setWorkletActive(false);
     }
   }
 
@@ -764,7 +818,7 @@ export class ReactorEngine {
         }
         this.message = '音频仅在本机处理，不会上传。';
       }
-      this.kernel.clearBins();
+      this.backend.clearSpectrum();
       this.startedAt = this.audio!.currentTime;
       this.playing = true;
       this.hasStarted = true;
@@ -875,9 +929,11 @@ export class ReactorEngine {
     this.peakLevelDb = null;
     // Drop the worklet's partial window so a resume never analyses stale audio.
     this.worklet?.port.postMessage({ type: 'reset' });
-    // Zero the spectrum so the paused rods ease down instead of freezing at the
-    // last frame's energy.
-    this.kernel.clearBins();
+    // Zero the *spectrum*, and only the spectrum: the band drive falls to zero, the
+    // rod heights are left exactly where they are, so the next `step` eases them
+    // down over ~0.3 s. Anything that also cleared the heights would collapse all
+    // 709 rods in a single frame, which reads as a glitch rather than as a stop.
+    this.backend.clearSpectrum();
   }
 
   // --- frame loop -----------------------------------------------------------
@@ -912,7 +968,7 @@ export class ReactorEngine {
     }
     this.lastFrameAt = time;
 
-    const dt = Math.min(Math.max((time - this.lastFrameTime) / 16.667, 0.1), 3) || 1;
+    const dt = Math.min(Math.max((time - this.lastFrameTime) / FRAME_MS, 0.1), 3) || 1;
     this.lastFrameTime = time;
     const canvas = this.canvas;
     const spectrum = this.spectrum;
@@ -923,18 +979,25 @@ export class ReactorEngine {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       const analyser = this.analyser;
+      const sampleRate = this.audio?.sampleRate ?? 48000;
+      // A kernel switch raises the easing time constant for a moment, so the two
+      // versions' shapes interpolate instead of cutting. The kernels do the
+      // interpolation per rod; this only decides how long they take over it.
+      const smoothing = this.switchSettle > 0
+        ? Math.max(this.smoothing, SWITCH_SETTLE_SMOOTHING)
+        : this.smoothing;
+      if (this.switchSettle > 0) this.switchSettle -= dt / 60;
 
       if (this.playing && analyser) {
-        // With the worklet running the bins arrive by message; otherwise the
-        // kernel analyses the block we pull here on the main thread.
-        if (this.analysis !== 'worklet') {
-          analyser.getFloatTimeDomainData(this.kernel.wave);
-          this.kernel.analyse();
-        }
-        this.kernel.step(dt, this.audio!.sampleRate, this.gain, this.smoothing);
+        // The backend owns its own capture: v1 pulls a block and transforms it
+        // here, v2 writes straight into wasm memory and lets its asynchronous
+        // stage run. With the v1 worklet active, `process` is a no-op and the
+        // spectrum arrives by message instead.
+        this.backend.process(analyser, sampleRate);
+        this.backend.step(dt, sampleRate, this.gain, smoothing);
       } else if (this.hasStarted) {
         // Paused: keep easing towards the baseline instead of freezing.
-        this.kernel.step(dt, this.audio?.sampleRate ?? 48000, this.gain, this.smoothing);
+        this.backend.step(dt, sampleRate, this.gain, smoothing);
       } else {
         this.previewHeights(time);
       }
@@ -945,18 +1008,19 @@ export class ReactorEngine {
         this.view.angle += (AUTO_SPIN * dt) / 60;
       }
       if (this.rgbSweep < 1) {
-        this.rgbSweep = Math.min(1, this.rgbSweep + (dt * 16.667) / RGB_WIPE_MS);
+        this.rgbSweep = Math.min(1, this.rgbSweep + (dt * FRAME_MS) / RGB_WIPE_MS);
       }
 
       const scene: Scene = {
-        heights: this.kernel.heights,
+        heights: this.backend.heights,
         phase: time,
         rgbOn: this.rgbLights,
         rgbSweep: this.rgbSweep,
-        energy: this.rgbLights || this.rgbSweep < 1 ? this.binEnergy() : 0,
+        energy: this.rgbLights || this.rgbSweep < 1 ? this.backend.energy() : 0,
       };
       renderer.drawCore(width, height, this.view, scene);
-      drawSpectrum(sg, spectrum.clientWidth, spectrum.clientHeight, this.kernel.bins, this.playing);
+      drawSpectrum(sg, spectrum.clientWidth, spectrum.clientHeight, this.backend.spectrum,
+        this.backend.spectrumScale, this.playing);
 
       if (time - this.lastReadout > 150) {
         this.lastReadout = time;
@@ -1002,31 +1066,17 @@ export class ReactorEngine {
   }
 
   /**
-   * 0..1 loudness driving the RGB halo. The byte spectrum is a decibel curve,
-   * so a silent bin still reads ~80/255; subtracting that floor is what keeps
-   * the glow from being permanently on.
-   */
-  private binEnergy(): number {
-    const bins = this.kernel.bins;
-    let peak = 0;
-    for (let i = 0; i < bins.length; i += 4) {
-      if (bins[i] > peak) peak = bins[i];
-    }
-    return Math.max(0, Math.min(1, (peak / 255 - 0.3) / 0.55));
-  }
-
-  /**
    * Idle "demo preview": before any audio has played, write a slow travelling
    * wave straight into the kernel's height buffer. This is the one place JS
    * writes kernel memory, and it exists because there is no spectrum yet.
    */
   private previewHeights(time: number): void {
     if (this.mode !== 'demo') return;
-    const heights = this.kernel.heights;
-    const rods = this.kernel.rods;
-    const stride = this.kernel.stride;
+    const heights = this.backend.heights;
+    const rods = this.backend.rods;
+    const stride = this.backend.stride;
     const phase = time * 0.0007;
-    for (let i = 0; i < this.kernel.rodCount; i++) {
+    for (let i = 0; i < this.backend.rodCount; i++) {
       const offset = i * stride;
       const channel = rods[offset + 4];
       const bandRadius = ((channel + 0.5) / this.channels) * 15;
@@ -1046,49 +1096,32 @@ export class ReactorEngine {
       }
       return;
     }
-    // Level comes from the same time-domain block the kernel just analysed, so
-    // the meter and the bars never disagree about what was measured.
-    analyser.getFloatTimeDomainData(this.kernel.wave);
-    let energy = 0;
-    let samplePeak = 0;
-    for (const sample of this.kernel.wave) {
-      energy += sample * sample;
-      const magnitude = Math.abs(sample);
-      if (magnitude > samplePeak) samplePeak = magnitude;
-    }
-    energy = Math.sqrt(energy / this.kernel.wave.length);
-    const levelDb = Math.round(20 * Math.log10(Math.max(energy, 0.001)));
+    // Measured by the backend, from the block it just analysed, so the meter and
+    // the bars can never disagree about what was measured.
+    const measured = this.backend.readouts(analyser, this.audio?.sampleRate ?? 48000);
     // Peak hold of the *sample* peak, not of the RMS: it reacts to transients,
     // then falls back slowly instead of freezing at the loudest moment forever.
-    const peakDb = 20 * Math.log10(Math.max(samplePeak, 1e-4));
-    const decayed = this.peakLevelDb === null ? peakDb : this.peakLevelDb - PEAK_DECAY_DB;
-    this.peakLevelDb = Math.round(Math.max(peakDb, decayed));
-
-    const bins = this.kernel.bins;
-    // Bin 0 is the DC term, never a pitch: skip it in both the peak search and
-    // the centroid weighting. The kernel subtracts the window mean before the
-    // FFT, so a biased source no longer raises this bin in the first place; this
-    // guard is what keeps a stray DC reading out of the readouts regardless.
-    let peak = 0;
-    let peakIndex = 1;
-    let weight = 0;
-    let weightedBin = 0;
-    for (let i = 1; i < bins.length; i++) {
-      const byte = bins[i];
-      if (byte > peak) {
-        peak = byte;
-        peakIndex = i;
-      }
-      // Power weighting: an empty bin contributes ~1e-8, real content ~1e-3.
-      const power = BIN_POWER[byte];
-      weight += power;
-      weightedBin += power * i;
+    // It lives here rather than in a kernel because it is presentation, not
+    // measurement, and both versions share it. Nothing is rounded on the way: the
+    // value keeps whatever width the backend produced, and the panel decides how
+    // many digits to show.
+    const samplePeakDb = measured.samplePeakDb;
+    if (samplePeakDb === null) {
+      this.peakLevelDb = this.peakLevelDb === null
+        ? null
+        : this.peakLevelDb - PEAK_DECAY_DB;
+    } else {
+      const decayed = this.peakLevelDb === null ? samplePeakDb : this.peakLevelDb - PEAK_DECAY_DB;
+      this.peakLevelDb = Math.max(samplePeakDb, decayed);
     }
-    const binHz = this.audio!.sampleRate / this.kernel.fftSize;
-    const peakHz = peak > 0 ? Math.round(peakIndex * binHz) : null;
-    const centroidHz = weight > 0 ? Math.round((weightedBin / weight) * binHz) : null;
     for (const listener of this.readoutListeners) {
-      listener({ levelDb, peakLevelDb: this.peakLevelDb, peakHz, centroidHz, ...perf });
+      listener({
+        levelDb: measured.levelDb,
+        peakLevelDb: this.peakLevelDb,
+        peakHz: measured.peakHz,
+        centroidHz: measured.centroidHz,
+        ...perf,
+      });
     }
   }
 

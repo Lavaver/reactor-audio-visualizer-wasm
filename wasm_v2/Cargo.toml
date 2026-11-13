@@ -1,0 +1,25 @@
+[package]
+name = "reactor_kernel_v2"
+version = "0.1.0"
+edition = "2024"
+description = "Asynchronous, Web-Audio-free spectrum kernel for the reactor, compiled to wasm32"
+
+[lib]
+# Same ABI shape as v1: a plain C-ABI shared library, no bindgen step. v2 differs
+# in what travels over that ABI (real units, f64 maths) and in how the work is
+# scheduled (a Tokio channel and an async stage, not a synchronous call chain).
+crate-type = ["cdylib"]
+
+[dependencies]
+# `sync` only. The runtime, `time` and `net` features are deliberately absent:
+# on wasm32-unknown-unknown std's `Instant::now` is
+# `panic!("time not implemented on this platform")` and there is no thread to
+# park, so a Tokio reactor cannot exist here. `tokio::sync` is runtime-agnostic —
+# it only needs wakers — which is exactly the part that does work.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

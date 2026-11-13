@@ -99,7 +99,7 @@ export function Stage({
           title="本模式可能导致审美崩坏与精神污♂染，请谨慎开启 :)"
           onClick={() => engine.setRgbLights(!rgbLights)}
         >
-          ✦ <span className="wide">RGB 光污染</span>
+          ✦ <span className="wide">RGB 效果</span>
         </button>
         <button id="reset" className="plain" aria-label="重置视角" onClick={() => engine.resetView()}>
           ⤾ <span className="wide">重置视角</span>
