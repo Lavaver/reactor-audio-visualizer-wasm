@@ -661,6 +661,57 @@ input[type=range] {
     grid-template-columns: repeat(2, 1fr)
 }
 
+/* Three kernels, three columns; the labels are two characters each, so the row still
+   fits the panel at its usual width. */
+.backend-switch.triple {
+    grid-template-columns: repeat(3, 1fr)
+}
+
+/* v3 gets the same treatment as v2 with a cold hue run, so the two optional kernels
+   read as a matched pair while staying distinguishable at a glance. The solid hue is
+   the real declaration; the gradient is layered on in the @supports block below. */
+.backend.fresh {
+    color: #46e6ff;
+    border-color: #3f6f7a;
+    border-image: linear-gradient(112deg, #46e6ff, #5cffd2 48%, #b6a6ff) 1;
+    font-weight: 600;
+    text-shadow: 0 0 8px rgba(70, 230, 255, .35)
+}
+
+.backend.fresh:hover:not(:disabled) {
+    color: #8ff2ff;
+    text-shadow: 0 0 10px rgba(70, 230, 255, .55)
+}
+
+.backend.fresh.on {
+    color: #d9fbff;
+    background: rgba(70, 230, 255, .14);
+    border-image: linear-gradient(112deg, #6feeff, #46e6ff 46%, #c9a8ff) 1;
+    text-shadow: 0 0 11px rgba(70, 230, 255, .7)
+}
+
+.backend.fresh:disabled {
+    color: var(--muted);
+    border-image: none;
+    border-color: #3b4436;
+    background: none;
+    font-weight: 400;
+    text-shadow: none
+}
+
+.kernel-note.fresh {
+    color: #8fe8da
+}
+
+/* v3's two obligations, stated on the panel: which path each number came from, and how
+   far the low bands lag. Both are measurements from scripts/kernel-check-v3.mjs. */
+.kernel-caveat {
+    margin: 6px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #a9a08a
+}
+
 /* The kernel switch sits above the meters grid, so it carries the same quiet label
    the meter cells use, plus the spacing that used to come from `margin-top`. */
 .kernel-switch {
@@ -787,6 +838,28 @@ input[type=range] {
 
     .kernel-note.vivid {
         background-image: linear-gradient(100deg, #c3a4ff 0%, #ff86b8 48%, #ffcf7d 100%)
+    }
+
+    /* v3's ink: cyan -> aqua -> periwinkle, the cold half of the same idea. */
+    .backend.fresh>span,
+    .kernel-note.fresh {
+        background-image: linear-gradient(100deg, #46e6ff 0%, #5cffd2 48%, #b6a6ff 100%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent
+    }
+
+    .backend.fresh:hover:not(:disabled)>span {
+        background-image: linear-gradient(100deg, #7feeff 0%, #8cffe0 48%, #cfc2ff 100%)
+    }
+
+    .backend.fresh.on>span {
+        background-image: linear-gradient(100deg, #6feeff 0%, #46e6ff 46%, #dcc2ff 100%)
+    }
+
+    .backend.fresh:disabled>span {
+        background-image: none;
+        -webkit-text-fill-color: currentColor
     }
 
     /* An uncompiled v2 must not look available, and must not be invisible either:

@@ -72,6 +72,12 @@ export interface Readout {
   fps: number | null;
   /** FPS implied by the 99th percentile frame time, i.e. the "1% low". */
   p99Fps: number | null;
+  /**
+   * Pitch from the constant-Q path, when the active backend has one. Reported beside the
+   * FFT-derived peak rather than instead of it: v3's rods and its readouts come from
+   * different paths, and the panel says so.
+   */
+  cqtHz?: number | null;
 }
 
 const DEMO_FREQS = [55, 82.41, 110, 164.81, 220, 329.63, 440, 659.25];
@@ -1120,6 +1126,7 @@ export class ReactorEngine {
         peakLevelDb: this.peakLevelDb,
         peakHz: measured.peakHz,
         centroidHz: measured.centroidHz,
+        cqtHz: measured.cqtHz,
         ...perf,
       });
     }

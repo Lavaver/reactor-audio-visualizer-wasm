@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="646" viewBox="0 0 1000 646" role="img" aria-label="Analysis cost per frame and wasm module size per kernel">
+<style>
+  text { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .title { font-size: 16px; font-weight: 700; fill: #dbe6f0; letter-spacing: 0.4px; }
+  .h { font-size: 13px; font-weight: 700; fill: #dbe6f0; letter-spacing: 0.3px; }
+  .note { font-size: 10.5px; fill: #6b7c8f; }
+  .label { font-size: 12px; fill: #dbe6f0; }
+  .value { font-size: 12px; font-weight: 700; fill: #dbe6f0; }
+  .pct { font-size: 12px; fill: #dbe6f0; }
+  .tick { font-size: 10px; fill: #6b7c8f; }
+</style>
+<rect width="100%" height="100%" fill="#0b1016"/>
+<text x="24" y="50" class="title">reactor kernel · analysis cost</text>
+<text x="24" y="70" class="note">node scripts/bench.mjs · 600 frames after 60 warm-up · 2048 samples/frame at 48000 Hz · analysis only, no rendering</text>
+<text x="24" y="92" class="h">analysis per frame (ms)</text>
+<text x="24" y="111" class="note">bar = mean, outline = p95; the v3 bar is split into FFT and CQT at the same total</text>
+<text x="976" y="111" class="note" text-anchor="end">% of 16.67 ms frame</text>
+<line x1="252" y1="124" x2="252" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="252" y="374" class="tick" text-anchor="middle">0</text>
+<line x1="346" y1="124" x2="346" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="346" y="374" class="tick" text-anchor="middle">0.1</text>
+<line x1="440" y1="124" x2="440" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="440" y="374" class="tick" text-anchor="middle">0.2</text>
+<line x1="534" y1="124" x2="534" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="534" y="374" class="tick" text-anchor="middle">0.3</text>
+<line x1="628" y1="124" x2="628" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="628" y="374" class="tick" text-anchor="middle">0.4</text>
+<line x1="722" y1="124" x2="722" y2="358" stroke="#1b2530" stroke-width="1"/>
+<text x="722" y="374" class="tick" text-anchor="middle">0.5</text>
+<line x1="252" y1="124" x2="252" y2="358" stroke="#2a3a4a" stroke-width="1"/>
+<text x="236" y="155" class="label" text-anchor="end">v1 · 32 bands</text>
+<rect x="252" y="141.5" width="97.7" height="19" rx="3" fill="#7f8ea3" fill-opacity="0.10" stroke="#7f8ea3" stroke-opacity="0.35" stroke-width="1"/>
+<rect x="252" y="144.5" width="82" height="13" rx="2" fill="#7f8ea3"/>
+<text x="734" y="155" class="value">0.088 ms</text>
+<text x="734" y="168" class="tick">p95 0.104 ms</text>
+<text x="976" y="155" class="pct" text-anchor="end">0.5%</text>
+<text x="236" y="201" class="label" text-anchor="end">v2 · 32 bands</text>
+<rect x="252" y="187.5" width="206.5" height="19" rx="3" fill="#b98cff" fill-opacity="0.10" stroke="#b98cff" stroke-opacity="0.35" stroke-width="1"/>
+<rect x="252" y="190.5" width="101.3" height="13" rx="2" fill="#b98cff"/>
+<text x="734" y="201" class="value">0.109 ms</text>
+<text x="734" y="214" class="tick">p95 0.220 ms</text>
+<text x="976" y="201" class="pct" text-anchor="end">0.7%</text>
+<text x="236" y="247" class="label" text-anchor="end">v3 · CQT off</text>
+<rect x="252" y="233.5" width="65.6" height="19" rx="3" fill="#7f8ea3" fill-opacity="0.10" stroke="#7f8ea3" stroke-opacity="0.35" stroke-width="1"/>
+<rect x="252" y="236.5" width="60.5" height="13" rx="2" fill="#7f8ea3"/>
+<text x="734" y="247" class="value">0.065 ms</text>
+<text x="734" y="260" class="tick">p95 0.070 ms</text>
+<text x="976" y="247" class="pct" text-anchor="end">0.4%</text>
+<text x="236" y="287" class="label" text-anchor="end">v3 · 32 bands</text>
+<text x="236" y="300" class="tick" text-anchor="end">FFT 0.065 + CQT 0.274</text>
+<rect x="252" y="279.5" width="402" height="19" rx="3" fill="#46e6ff" fill-opacity="0.10" stroke="#46e6ff" stroke-opacity="0.35" stroke-width="1"/>
+<rect x="252" y="282.5" width="60.5" height="13" rx="2" fill="#2f7284"/>
+<rect x="313.5" y="282.5" width="256.5" height="13" rx="2" fill="#46e6ff"/>
+<text x="734" y="287" class="value">0.339 ms</text>
+<text x="734" y="300" class="tick">p95 0.428 ms</text>
+<text x="976" y="287" class="pct" text-anchor="end">2.0%</text>
+<text x="236" y="333" class="label" text-anchor="end">CQT share</text>
+<text x="236" y="346" class="tick" text-anchor="end">108180 samples · 2.5 ns/sample</text>
+<rect x="252" y="328.5" width="256.5" height="13" rx="2" fill="#46e6ff"/>
+<text x="734" y="333" class="value">0.274 ms</text>
+<text x="976" y="333" class="pct" text-anchor="end">1.6%</text>
+<text x="24" y="408" class="h">.wasm module size (kB)</text>
+<text x="24" y="427" class="note">compiled wasm32-unknown-unknown release, as shipped by scripts/copy-wasm.mjs</text>
+<line x1="252" y1="440" x2="252" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="252" y="598" class="tick" text-anchor="middle">0</text>
+<line x1="330.3" y1="440" x2="330.3" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="330.3" y="598" class="tick" text-anchor="middle">25</text>
+<line x1="408.7" y1="440" x2="408.7" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="408.7" y="598" class="tick" text-anchor="middle">50</text>
+<line x1="487" y1="440" x2="487" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="487" y="598" class="tick" text-anchor="middle">75</text>
+<line x1="565.3" y1="440" x2="565.3" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="565.3" y="598" class="tick" text-anchor="middle">100</text>
+<line x1="643.7" y1="440" x2="643.7" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="643.7" y="598" class="tick" text-anchor="middle">125</text>
+<line x1="722" y1="440" x2="722" y2="582" stroke="#1b2530" stroke-width="1"/>
+<text x="722" y="598" class="tick" text-anchor="middle">150</text>
+<line x1="252" y1="440" x2="252" y2="582" stroke="#2a3a4a" stroke-width="1"/>
+<text x="236" y="471" class="label" text-anchor="end">kernel v1</text>
+<rect x="252" y="460.5" width="408.2" height="13" rx="2" fill="#7f8ea3"/>
+<text x="734" y="471" class="value">130.6 kB</text>
+<text x="236" y="517" class="label" text-anchor="end">kernel v2</text>
+<rect x="252" y="506.5" width="223.1" height="13" rx="2" fill="#b98cff"/>
+<text x="734" y="517" class="value">71.5 kB</text>
+<text x="236" y="563" class="label" text-anchor="end">kernel v3</text>
+<rect x="252" y="552.5" width="233.9" height="13" rx="2" fill="#46e6ff"/>
+<text x="734" y="563" class="value">75.0 kB</text>
+<text x="24" y="622" class="note">60 Hz frame budget = 16.67 ms in total; the % column is the analysis share of it. WebGL/WebGPU submission, compositing and the audio graph are not measured.</text>
+</svg>

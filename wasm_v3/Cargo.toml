@@ -1,0 +1,22 @@
+[package]
+name = "reactor_kernel_v3"
+version = "0.1.0"
+edition = "2024"
+description = "FFT + CQT hybrid spectrum kernel for the reactor, compiled to wasm32"
+
+[lib]
+# Same ABI shape as v1/v2: a plain C-ABI shared library, no bindgen step.
+crate-type = ["cdylib"]
+
+[dependencies]
+# `sync` only, for the same reason as v2: on wasm32-unknown-unknown std's
+# `Instant::now` is `panic!("time not implemented on this platform")` and there is
+# no thread to park, so a Tokio reactor cannot exist. `tokio::sync` needs only
+# wakers, which is the part that does work.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

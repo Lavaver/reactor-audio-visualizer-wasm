@@ -9,8 +9,9 @@
 
 import { Kernel } from './kernel';
 import { KernelV2, REPORT_CENTROID_HZ, REPORT_PEAK_DB, REPORT_PEAK_HZ, REPORT_RMS_DB } from './kernel-v2';
+import { CQT_REPORT_PEAK_HZ, KernelV3 } from './kernel-v3';
 
-export type KernelVersion = 'v1' | 'v2';
+export type KernelVersion = 'v1' | 'v2' | 'v3';
 
 /** Where the spectrum is computed, shown in the panel so it is not a guess. */
 export type AnalysisMode = 'worklet' | 'main';
@@ -22,6 +23,12 @@ export interface BackendReadout {
   samplePeakDb: number | null;
   peakHz: number | null;
   centroidHz: number | null;
+  /**
+   * Pitch from the constant-Q path, when the backend has one. v3 reports it separately
+   * because its rods below the crossover are driven by the CQT while peakHz stays
+   * FFT-derived; v1 and v2 have no such path and return null.
+   */
+  cqtHz: number | null;
 }
 
 export interface AnalysisBackend {
@@ -68,6 +75,7 @@ const NULL_READOUT: BackendReadout = {
   samplePeakDb: null,
   peakHz: null,
   centroidHz: null,
+  cqtHz: null,
 };
 
 /**
@@ -202,6 +210,7 @@ export class KernelV1Backend implements AnalysisBackend {
       samplePeakDb,
       peakHz: peak > 0 ? Math.round(peakIndex * binHz) : null,
       centroidHz: weight > 0 ? Math.round((weightedBin / weight) * binHz) : null,
+      cqtHz: null,
     };
   }
 
@@ -321,6 +330,7 @@ export class KernelV2Backend implements AnalysisBackend {
       samplePeakDb: peak <= SILENCE_DB ? null : peak,
       peakHz: peakHz > 0 ? peakHz : null,
       centroidHz: centroidHz > 0 ? centroidHz : null,
+      cqtHz: null,
     };
   }
 
@@ -338,4 +348,110 @@ export class KernelV2Backend implements AnalysisBackend {
   }
 }
 
+/**
+ * v3: two transforms in one frame.
+ *
+ * The FFT path covers the whole spectrum and owns the readouts; the constant-Q path owns
+ * the bands below its crossover and is crossfaded into the rod drive over three bands.
+ * Both are `f64` and both publish their own band energy, so the panel can say where a
+ * number came from instead of implying there is only one source.
+ */
+export class KernelV3Backend implements AnalysisBackend {
+  readonly version = 'v3' as const;
+  readonly analysis = 'main' as const;
+  // No byte spectrum to accept, and the analysis is already asynchronous inside wasm.
+  readonly workletCapable = false;
+  readonly spectrumScale = 1;
+
+  constructor(private readonly kernel: KernelV3) {}
+
+  get rodCount(): number {
+    return this.kernel.rodCount;
+  }
+
+  get stride(): number {
+    return this.kernel.stride;
+  }
+
+  get fftSize(): number {
+    return this.kernel.fftSize;
+  }
+
+  get rods(): Float32Array<ArrayBuffer> {
+    return this.kernel.rods;
+  }
+
+  get heights(): Float32Array<ArrayBuffer> {
+    return this.kernel.heights;
+  }
+
+  get spectrum(): ArrayLike<number> {
+    return this.kernel.bars;
+  }
+
+  get channels(): number {
+    return this.kernel.channels;
+  }
+
+  /** Bands the CQT owns, for the panel's source label. */
+  get cqtRange(): { first: number; count: number } {
+    return this.kernel.cqtRange;
+  }
+
+  setChannels(channels: number): void {
+    this.kernel.setChannels(channels);
+  }
+
+  clearSpectrum(): void {
+    this.kernel.clearSpectrum();
+  }
+
+  setWorkletActive(): void {
+    /* v3 never runs on the audio thread */
+  }
+
+  ingestBins(): boolean {
+    return false;
+  }
+
+  process(analyser: AnalyserNode, sampleRate: number): void {
+    this.kernel.configure(sampleRate);
+    this.kernel.pushFrom(analyser);
+  }
+
+  step(dtFrames: number, sampleRate: number, gain: number, smoothing: number): void {
+    this.kernel.configure(sampleRate);
+    this.kernel.step(dtFrames / 60, gain, smoothing);
+  }
+
+  readouts(): BackendReadout {
+    // peakHz / centroidHz / RMS are the FFT path, the same estimators as v2, so a v3
+    // readout and a v2 readout are the same measurement of the same block. The CQT's own
+    // pitch is reported beside them, not instead of them.
+    const report = this.kernel.report;
+    const level = report[REPORT_RMS_DB];
+    const peak = report[REPORT_PEAK_DB];
+    const peakHz = report[REPORT_PEAK_HZ];
+    const centroidHz = report[REPORT_CENTROID_HZ];
+    const cqtHz = this.kernel.cqtReport[CQT_REPORT_PEAK_HZ];
+    return {
+      levelDb: level <= SILENCE_DB ? null : level,
+      samplePeakDb: peak <= SILENCE_DB ? null : peak,
+      peakHz: peakHz > 0 ? peakHz : null,
+      centroidHz: centroidHz > 0 ? centroidHz : null,
+      cqtHz: cqtHz > 0 ? cqtHz : null,
+    };
+  }
+
+  energy(): number {
+    const bars = this.kernel.bars;
+    let peak = 0;
+    for (let i = 0; i < bars.length; i += 4) {
+      if (bars[i] > peak) peak = bars[i];
+    }
+    return Math.max(0, Math.min(1, (peak - 0.3) / 0.6));
+  }
+}
+
 export { probeKernelV2 } from './kernel-v2';
+export { probeKernelV3 } from './kernel-v3';

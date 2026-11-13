@@ -30,6 +30,13 @@ const KERNELS = [
     target: join(publicDir, 'reactor_kernel_v2.wasm'),
     required: false,
   },
+  {
+    name: 'reactor_kernel_v3.wasm',
+    // Same rule as v2: optional, served verbatim, probed at runtime.
+    source: join(root, 'wasm_v3', 'target', 'wasm32-unknown-unknown', 'release', 'reactor_kernel_v3.wasm'),
+    target: join(publicDir, 'reactor_kernel_v3.wasm'),
+    required: false,
+  },
 ];
 
 await mkdir(targetDir, { recursive: true });

@@ -278,15 +278,30 @@ struct State {
 impl State {
     /// `const` so the whole kernel can live in a `static`; every field that
     /// needs an allocator starts empty and is filled by [`rk2_configure`].
+    /// The non-zero defaults, so `new()` can stay all-zero and keep the state out of the
+    /// wasm file's data segment.
+    fn defaults(&mut self) {
+        self.channels = 32;
+        self.fft_size = 2048;
+        self.sample_rate = 48_000.0;
+        self.bin_count = 1024;
+        self.band_peak_db = f64::NEG_INFINITY;
+        self.report = [0.0, 0.0, SILENCE_DB, SILENCE_DB];
+    }
+
     const fn new() -> Self {
         Self {
             rods: [ROD_ZERO; ROD_COUNT],
             heights: [0.0; ROD_COUNT],
             channel_amps: [0.0; MAX_CHANNELS],
-            channels: 32,
-            fft_size: 2048,
-            sample_rate: 48_000.0,
-            bin_count: 1024,
+            // All zero on purpose: one non-zero initialiser makes the whole `State` an
+            // initialized data image, which copies the transform scratch and the bin arrays
+            // into the .wasm file instead of leaving them zero-filled. Non-zero defaults are
+            // in `defaults()`, called from `rk2_init`.
+            channels: 0,
+            fft_size: 0,
+            sample_rate: 0.0,
+            bin_count: 0,
             window: [0.0; MAX_FFT],
             window_cg: 0.0,
             window_s2: 0.0,
@@ -301,8 +316,8 @@ impl State {
             bars: [0.0; MAX_BINS],
             band_rms: [0.0; MAX_CHANNELS],
             band_drive: [0.0; MAX_CHANNELS],
-            band_peak_db: f64::NEG_INFINITY,
-            report: [0.0, 0.0, SILENCE_DB, SILENCE_DB],
+            band_peak_db: 0.0,
+            report: [0.0; REPORT_WORDS],
             tx: None,
             processed: 0,
             dropped: 0,
@@ -618,6 +633,7 @@ fn integrate_bands(state: &mut State) {
 #[unsafe(no_mangle)]
 pub extern "C" fn rk2_init() -> u32 {
     let state = kernel();
+    state.defaults();
     let mut index = 0usize;
     let mut x = -15i32;
     while x <= 15 {
@@ -663,7 +679,9 @@ pub extern "C" fn rk2_version() -> u32 {
 pub extern "C" fn rk2_configure(fft_size: u32, sample_rate: f64) {
     let state = kernel();
     let requested = (fft_size as usize).clamp(64, MAX_FFT);
-    let size = 1usize << (usize::BITS - 1 - requested.leading_zeros());
+    // `requested` is a u32; using `usize::BITS` here shifted 32 bits too far for any
+    // fft_size below 2048.
+    let size = 1usize << (u32::BITS - 1 - requested.leading_zeros()) as usize;
     let rate = if sample_rate.is_finite() && sample_rate > 0.0 {
         sample_rate
     } else {

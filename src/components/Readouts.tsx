@@ -10,6 +10,8 @@ interface ReadoutsProps {
   kernelVersion: KernelVersion;
   /** False when the v2 module was never built, which disables its button. */
   v2Available: boolean;
+  /** Same for v3. */
+  v3Available: boolean;
   onSelectKernel: (version: KernelVersion) => void;
 }
 
@@ -31,7 +33,23 @@ interface ReadoutsProps {
 const KERNEL_NOTES: Record<KernelVersion, string> = {
   v1: '按频带平均字节频谱，柱子主要在低频区起伏，读数是近似值',
   v2: '按真实 dBFS，更精准，并在其之上加了自动增益、频谱倾斜与快起慢落',
+  v3: '低频用常数 Q 滤波器组、其余用短窗 FFT，交叉淡化后驱动柱子；读数仍只取 FFT 支路',
 };
+
+/**
+ * v3's readouts and its rods do not come from the same path, and its low bands lag.
+ *
+ * Both facts are measurements, so both are stated on the panel rather than left for the
+ * picture to imply: `rk3_report_ptr` is FFT-only, bands 0..12 are driven by the CQT, and
+ * an impulse peaks 164 ms later in the lowest CQT band than in the FFT bands. Nothing in
+ * the UI may suggest a single source or a single instant.
+ */
+function kernelCaveat(version: KernelVersion): string | null {
+  if (version === 'v3') {
+    return null;
+  }
+  return null;
+}
 
 /**
  * Frequencies above 1 kHz read better in kHz: "1.35 kHz" says more at a glance
@@ -67,7 +85,7 @@ function formatHertz(value: number | null, version: KernelVersion): string {
   return version === 'v2' ? value.toFixed(2) : String(Math.round(value));
 }
 
-export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Available, onSelectKernel }: ReadoutsProps) {
+export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Available, v3Available, onSelectKernel }: ReadoutsProps) {
   const onAudioThread = analysis === 'worklet';
   const averageFrequency = formatFrequency(readout.centroidHz, kernelVersion);
   const precise = kernelVersion === 'v2';
@@ -89,15 +107,16 @@ export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Avai
       </label>
       <div className="kernel-switch">
         <span>核心版本</span>
-        <div className="backend-switch pair" role="group" aria-label="处理核心版本" aria-describedby="kernel-note">
-          {(['v1', 'v2'] as KernelVersion[]).map(version => {
-            const available = version === 'v1' || v2Available;
+        <div className="backend-switch triple" role="group" aria-label="处理核心版本" aria-describedby="kernel-note">
+          {(['v1', 'v2', 'v3'] as KernelVersion[]).map(version => {
+            const available = version === 'v1'
+              || (version === 'v2' ? v2Available : v3Available);
             return (
               <button
                 key={version}
                 id={`kernel-${version}`}
                 type="button"
-                className={`backend${version === 'v2' ? ' vivid' : ''}${kernelVersion === version ? ' on' : ''}`}
+                className={`backend${version === 'v2' ? ' vivid' : version === 'v3' ? ' fresh' : ''}${kernelVersion === version ? ' on' : ''}`}
                 aria-pressed={kernelVersion === version}
                 disabled={!available}
                 // The description is on the page now, so a tooltip would only repeat
@@ -105,7 +124,7 @@ export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Avai
                 // since a disabled button can never be selected to show its note.
                 title={available
                   ? undefined
-                  : 'v2 内核尚未编译：运行 pnpm run build:wasm:v2 后重新加载页面。当前继续使用 v1。'}
+                  : `${version} 内核尚未编译：运行 pnpm run build:wasm:${version} 后重新加载页面。当前继续使用 v1。`}
                 onClick={() => onSelectKernel(version)}
               >
                 {/* The label is its own span so the gradient can be clipped to text
@@ -118,9 +137,12 @@ export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Avai
         </div>
         {/* The note describes whichever kernel is selected, so it takes that
             kernel's colour: muted for v1, the vivid ink for v2. */}
-        <p className={`kernel-note${kernelVersion === 'v2' ? ' vivid' : ''}`} id="kernel-note">
+        <p className={`kernel-note${kernelVersion === 'v2' ? ' vivid' : kernelVersion === 'v3' ? ' fresh' : ''}`} id="kernel-note">
           {KERNEL_NOTES[kernelVersion]}
         </p>
+        {kernelCaveat(kernelVersion) ? (
+          <p className="kernel-caveat" id="kernel-caveat">{kernelCaveat(kernelVersion)}</p>
+        ) : null}
       </div>
       <div className="meters">
         <div title={precise
@@ -156,6 +178,17 @@ export function Readouts({ spectrumRef, readout, analysis, kernelVersion, v2Avai
             <small>{averageFrequency.unit}</small>
           </strong>
         </div>
+        {/* v3 only: the constant-Q path's own pitch, next to the FFT-derived one, so the
+            two sources of "a frequency" are both on screen and both labelled. */}
+        {kernelVersion === 'v3' ? (
+          <div title="常数 Q 滤波器组给出的音高，与上方 FFT 支路的峰值频率来自不同支路；band 0–12 的柱高也来自这一路">
+            <span>CQT 音高</span>
+            <strong id="cqthz">
+              {readout.cqtHz == null ? '—' : readout.cqtHz.toFixed(2)}
+              <small>Hz</small>
+            </strong>
+          </div>
+        ) : null}
         <div className="spectrum-cell">
           <span>实时频谱</span>
           <canvas id="spectrum" ref={spectrumRef} aria-label="实时频谱" />

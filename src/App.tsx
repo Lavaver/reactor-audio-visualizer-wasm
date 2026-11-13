@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Kernel } from './wasm/kernel';
 import { KernelV2 } from './wasm/kernel-v2';
-import { KernelV1Backend, KernelV2Backend, probeKernelV2 } from './wasm/backend';
+import { KernelV3 } from './wasm/kernel-v3';
+import { KernelV1Backend, KernelV2Backend, KernelV3Backend, probeKernelV2, probeKernelV3 } from './wasm/backend';
 import type { AnalysisBackend, KernelVersion } from './wasm/backend';
 import { ReactorEngine, type EngineSnapshot, type Readout } from './reactor/engine';
 import { webgl2Available, webgpuAvailable, type RendererKind } from './reactor/renderer';
@@ -30,10 +31,13 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [gpu, editGpu] = useGpu();
   const [renderer, setRenderer] = useState<RendererKind>('webgl');
-  /** Whether the optional v2 kernel was compiled. v2 stays off when it was not. */
+  /** Whether the optional kernels were compiled. Absent means the button stays disabled. */
   const [v2Available, setV2Available] = useState(false);
-  /** Both backends stay alive once built, so switching back is instant. */
-  const backends = useRef<{ v1: AnalysisBackend | null; v2: AnalysisBackend | null }>({ v1: null, v2: null });
+  const [v3Available, setV3Available] = useState(false);
+  /** All backends stay alive once built, so switching back is instant. */
+  const backends = useRef<{ v1: AnalysisBackend | null; v2: AnalysisBackend | null; v3: AnalysisBackend | null }>(
+    { v1: null, v2: null, v3: null },
+  );
   const [availability, setAvailability] = useState<Record<RendererKind, boolean>>({
     canvas2d: true,
     webgl: true,
@@ -72,10 +76,13 @@ export default function App() {
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
       });
-    // v2 is optional, so its probe runs alongside and never blocks the boot: a
+    // v2 and v3 are optional, so their probes run alongside and never block the boot: a
     // miss only leaves one button disabled.
     void probeKernelV2().then(bytes => {
       if (!cancelled) setV2Available(bytes !== null);
+    });
+    void probeKernelV3().then(bytes => {
+      if (!cancelled) setV3Available(bytes !== null);
     });
     return () => {
       cancelled = true;
@@ -98,18 +105,31 @@ export default function App() {
       return;
     }
     try {
-      if (!backends.current.v2) {
-        const kernel = await KernelV2.load();
+      if (version === 'v2') {
+        if (!backends.current.v2) {
+          const kernel = await KernelV2.load();
+          if (!kernel) {
+            setV2Available(false);
+            return;
+          }
+          backends.current.v2 = new KernelV2Backend(kernel);
+        }
+        engine.setBackend(backends.current.v2);
+        return;
+      }
+      if (!backends.current.v3) {
+        const kernel = await KernelV3.load();
         if (!kernel) {
-          setV2Available(false);
+          setV3Available(false);
           return;
         }
-        backends.current.v2 = new KernelV2Backend(kernel);
+        backends.current.v3 = new KernelV3Backend(kernel);
       }
-      engine.setBackend(backends.current.v2);
+      engine.setBackend(backends.current.v3);
     } catch {
       // A broken module must not leave the reactor without an analyser.
-      setV2Available(false);
+      if (version === 'v2') setV2Available(false);
+      else setV3Available(false);
     }
   };
 
@@ -225,6 +245,7 @@ export default function App() {
             analysis={snapshot.analysis}
             kernelVersion={snapshot.kernelVersion}
             v2Available={v2Available}
+            v3Available={v3Available}
             onSelectKernel={version => void selectKernel(version)}
           />
           <PerfPanel

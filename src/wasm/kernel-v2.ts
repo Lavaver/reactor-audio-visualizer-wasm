@@ -110,7 +110,8 @@ export class KernelV2 {
     const exports = instance.exports as unknown as KernelV2Exports;
     if (exports.rk2_version() !== 2) return null;
     if (exports.rk2_init() !== 709) return null;
-    exports.rk2_configure(exports.rk2_fft_size(), 48_000);
+    // 2048 explicitly: the state starts zero-filled, so `rk2_fft_size()` is 0 here.
+    exports.rk2_configure(2048, 48_000);
     return new KernelV2(exports);
   }
 
