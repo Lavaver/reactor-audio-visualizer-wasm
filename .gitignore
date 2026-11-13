@@ -15,6 +15,8 @@ public/reactor_kernel_v3.wasm
 
 # Local test output
 .fixtures/
+# `scripts/render-comparison.py` imports render-heights.py by path, which leaves this.
+scripts/__pycache__/
 .edge-profile*/
 .edge-tmp/
 .edge.pid

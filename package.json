@@ -17,6 +17,7 @@
     "check:kernel": "pnpm run build:wasm && node scripts/kernel-check.mjs",
     "check:kernel:v2": "pnpm run build:wasm:v2 && node scripts/kernel-check-v2.mjs",
     "check:kernel:v3": "pnpm run build:wasm:v3 && node scripts/kernel-check-v3.mjs",
+    "check:rings": "pnpm run build:wasm:v3 && node scripts/height-dump.mjs wasm_v3/target/wasm32-unknown-unknown/release/reactor_kernel_v3.wasm .fixtures/heights-v3.json music && node scripts/ring-visibility.mjs --assert .fixtures/heights-v3.json",
     "bench": "node scripts/bench.mjs"
   },
   "dependencies": {

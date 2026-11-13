@@ -186,6 +186,8 @@ struct Block {
 struct State {
     rods: [Rod; ROD_COUNT],
     heights: [f32; ROD_COUNT],
+    /// Static per-rod multiplier on the ring height: `1 - RING_TEXTURE .. 1`.
+    texture: [f32; ROD_COUNT],
     channels: usize,
 
     fft_size: usize,
@@ -269,6 +271,9 @@ impl State {
         Self {
             rods: [ROD_ZERO; ROD_COUNT],
             heights: [0.0; ROD_COUNT],
+            // Filled by `build_rod_texture` during `rk3_init`; zero here for the reason in
+            // the comment at the top of this literal.
+            texture: [0.0; ROD_COUNT],
             // Every field zero on purpose. A single non-zero initialiser here makes the
             // whole `State` an initialized data image, which drags the 250 kB CQT ring and
             // the 96 kB of transform scratch into the .wasm file instead of zero-filled
@@ -909,11 +914,91 @@ fn smooth_bands(state: &mut State, dt: f64) {
     }
 }
 
+// --- ring-breaking texture --------------------------------------------------
+
+/// Depth of the static per-rod texture, as a fraction of the ring's height.
+///
+/// A ring is the one thing in this field the eye cannot ignore: every rod on it carries
+/// *exactly* the same height, and an equal value along a closed curve is the strongest
+/// grouping cue the visual system has -- it is what turns scattered posts into a hoop.
+/// The radial envelope is the information (bass outside, treble inside); the closed
+/// contour is not. This constant destroys the contour and leaves the envelope's shape.
+const RING_TEXTURE: f64 = 0.45;
+/// Feature size of that texture, in rods. The lattice spacing is one world unit and a ring
+/// is half a unit of radius wide (30 bands over radius 15), so a cell of three units makes
+/// every blob cut across five or six rings instead of running along one.
+const RING_TEXTURE_CELL: f64 = 3.0;
+/// Weight of the second, half-cell octave. It roughens the blob edges; too much of it and
+/// the field reads as rubble rather than terrain, which is the look full independence
+/// produced and was rejected.
+const RING_TEXTURE_FINE: f64 = 0.30;
+
+/// Deterministic hash of a lattice cell to -1..1: a few multiplies, no state, no `std`.
+fn hash_cell(x: i32, z: i32, salt: u32) -> f64 {
+    let mut h = (x as u32)
+        .wrapping_mul(0x8da6_b343)
+        .wrapping_add((z as u32).wrapping_mul(0xd816_3841))
+        ^ salt;
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x7feb_352d);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x846c_a68b);
+    h ^= h >> 16;
+    h as f64 * (2.0 / u32::MAX as f64) - 1.0
+}
+
+fn smooth_step(t: f64) -> f64 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Bilinear value noise over the plane, in -1..1. Isotropic on purpose: anything that
+/// varied with radius or angle alone would draw new circles to replace the old ones.
+fn value_noise(x: f64, z: f64, salt: u32) -> f64 {
+    let cell_x = x.floor();
+    let cell_z = z.floor();
+    let tx = smooth_step(x - cell_x);
+    let tz = smooth_step(z - cell_z);
+    let ix = cell_x as i32;
+    let iz = cell_z as i32;
+    let near_low = hash_cell(ix, iz, salt);
+    let far_low = hash_cell(ix + 1, iz, salt);
+    let near_high = hash_cell(ix, iz + 1, salt);
+    let far_high = hash_cell(ix + 1, iz + 1, salt);
+    let low = near_low + (far_low - near_low) * tx;
+    let high = near_high + (far_high - near_high) * tx;
+    low + (high - low) * tz
+}
+
+/// One static multiplier per rod, from the rod's own position in the lattice.
+///
+/// Static is the point. Height varies between neighbours, which breaks the contour, while
+/// nothing varies between *frames*, so this cannot add jitter -- rods reversing direction
+/// from block to block was the measured failure mode of the earlier per-bin experiment.
+/// Downward only (`1 - depth .. 1`), which buys two guarantees for free: a rod can never be
+/// pushed past the display ceiling, and silence stays at the floor because the factor
+/// multiplies the band, which is zero there.
+fn build_rod_texture(state: &mut State) {
+    let cell = RING_TEXTURE_CELL.max(0.5);
+    for index in 0..ROD_COUNT {
+        let rod = state.rods[index];
+        let x = rod.x as f64 / cell;
+        let z = rod.z as f64 / cell;
+        // Two octaves: the coarse one decides where the hills are, the fine one roughens
+        // their edges, so the surface does not read as smooth dunes riding on hoops.
+        let coarse = value_noise(x, z, 0x51ed_270b);
+        let fine = value_noise(x * 2.0 + 17.0, z * 2.0 - 9.0, 0x1b56_c4e9);
+        let noise =
+            ((coarse + RING_TEXTURE_FINE * fine) / (1.0 + RING_TEXTURE_FINE)).clamp(-1.0, 1.0);
+        state.texture[index] = (1.0 - RING_TEXTURE * 0.5 * (1.0 - noise)) as f32;
+    }
+}
+
 fn advance_heights(state: &mut State, dt_frames: f64, gain: f64, smoothing: f64) {
     let damping = 1.0 - (0.45 + smoothing * 0.53).powf(dt_frames);
     for index in 0..ROD_COUNT {
         let channel = state.rods[index].channel as usize;
-        let amp = state.band_drive[channel].powf(1.7) * gain;
+        // The ring is the envelope, the texture is what stops it reading as a hoop.
+        let amp = state.band_drive[channel].powf(1.7) * gain * state.texture[index] as f64;
         let target = 0.07 + amp * 4.8;
         let height = &mut state.heights[index];
         // The one narrowing cast on the way out: the renderers upload rod heights to
@@ -955,6 +1040,9 @@ pub extern "C" fn rk3_init() -> u32 {
     state.ready = index == ROD_COUNT;
     state.channels = 32;
     state.heights = [0.0; ROD_COUNT];
+    // After the lattice and before anything measures heights: the texture depends only on
+    // where a rod stands, so it is built once and then read every frame for free.
+    build_rod_texture(state);
     apply_channels(state);
     reset_analysis(state);
     index as u32
@@ -1058,6 +1146,13 @@ pub extern "C" fn rk3_bin_count() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn rk3_rod_count() -> u32 {
     ROD_COUNT as u32
+}
+
+/// The static per-rod texture this init built, in `1 - RING_TEXTURE .. 1`. Exported so the
+/// offline renderer can show what broke the rings, not just the result.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk3_texture_ptr() -> *const f32 {
+    kernel().texture.as_ptr()
 }
 
 #[unsafe(no_mangle)]
