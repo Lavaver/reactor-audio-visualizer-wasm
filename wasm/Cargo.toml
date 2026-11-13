@@ -1,0 +1,18 @@
+[package]
+name = "reactor_kernel"
+version = "0.1.0"
+edition = "2024"
+description = "Spectrum -> channel energy -> control rod heights, compiled to wasm32"
+
+[lib]
+# A plain C-ABI shared library: JS instantiates it and reads the exported
+# linear-memory views directly, so no bindgen step is involved.
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

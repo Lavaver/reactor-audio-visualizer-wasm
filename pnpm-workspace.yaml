@@ -1,0 +1,8 @@
+# pnpm settings live here for pnpm 11; `.npmrc` is no longer the place for
+# linker settings.
+#
+# `hoisted` (npm-style flat node_modules) is required: Vite resolves its own
+# nested dependencies (rolldown, lightningcss, ...) through the top-level
+# `node_modules/vite` entry, which pnpm's isolated symlink farm leaves empty.
+nodeLinker: hoisted
+storeDir: .pnpm-store

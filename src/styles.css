@@ -1,0 +1,915 @@
+/*
+ * MiSans VF: a TrueType variable font (wght 150–700) with full CJK coverage, so
+ * one file serves both the Latin labels and the Chinese copy. `font-display:
+ * swap` keeps the page readable while the 19 MB file streams in; `font-synthesis:
+ * none` on the body stops the browser from faking weights the axis already has.
+ */
+@font-face {
+    font-family: "MiSans VF";
+    src: url("/fonts/MiSansVF.ttf") format("truetype");
+    font-weight: 150 700;
+    font-style: normal;
+    font-display: swap
+}
+
+:root {
+    color-scheme: dark;
+    --bg: #121614;
+    --panel: #191d1a;
+    --line: #343a32;
+    --muted: #8e998a;
+    --text: #e6eadf;
+    --accent: #deec95;
+    --font-sans: "MiSans VF", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    /*
+     * The "monospace" labels use MiSans too, so the whole page shares one family.
+     * MiSans is proportional, so the numeric readouts opt into its `tnum`
+     * (tabular figures) feature below to keep digits from shuffling width.
+     */
+    --font-mono: "MiSans VF", ui-monospace, SFMono-Regular, Menlo, monospace
+}
+
+* {
+    box-sizing: border-box
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased
+}
+
+button,
+a,
+input {
+    -webkit-tap-highlight-color: transparent
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px
+}
+
+header {
+    height: 88px;
+    padding: 0 34px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    border-bottom: 1px solid var(--line)
+}
+
+.brand {
+    text-decoration: none;
+    color: var(--text);
+    font-size: 25px;
+    letter-spacing: 3px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px
+}
+
+.brand-icon {
+    font-size: 34px;
+    color: var(--accent)
+}
+
+.edition {
+    font: 12px var(--font-mono);
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-left: 16px
+}
+
+.top-note {
+    font-size: 14px;
+    color: var(--muted);
+    margin-left: auto
+}
+
+.plain {
+    background: none;
+    border: 0;
+    color: #a8b29f;
+    font-size: 14px;
+    padding: 10px
+}
+
+main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    min-height: calc(100svh - 137px)
+}
+
+.stage {
+    position: relative;
+    min-height: 680px;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 49%, #30382b 0%, #1b211a 43%, #141915 78%)
+}
+
+.stage-title {
+    position: absolute;
+    top: 30px;
+    left: 34px;
+    right: 20px;
+    z-index: 1;
+    pointer-events: none
+}
+
+.eyebrow {
+    font: 12px var(--font-mono);
+    letter-spacing: 1.4px;
+    color: var(--muted)
+}
+
+h1 {
+    font-size: 25px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    margin: 13px 0;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    white-space: nowrap;
+    min-width: 0
+}
+
+h1>span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 13px var(--font-mono);
+    color: #697561;
+    letter-spacing: 1px
+}
+
+#gpu {
+    pointer-events: auto;
+    cursor: pointer;
+    border-bottom: 1px dotted #697561
+}
+
+#gpu.approx {
+    color: #a99c6a
+}
+
+#gpu:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 3px
+}
+
+.live {
+    position: absolute;
+    top: 68px;
+    right: 28px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: #bdc5ad
+}
+
+.live i {
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 10px #deec9544
+}
+
+#core {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+    touch-action: none;
+    cursor: grab
+}
+
+#core:active {
+    cursor: grabbing
+}
+
+.axis {
+    position: absolute;
+    bottom: 66px;
+    left: 34px;
+    font: 12px var(--font-mono);
+    letter-spacing: 1.5px;
+    color: #737e6c;
+    pointer-events: none
+}
+
+.stage-bottom {
+    position: absolute;
+    bottom: 18px;
+    left: 34px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #839078;
+    font-size: 12px
+}
+
+.stage-toggles {
+    position: absolute;
+    top: 22px;
+    right: 24px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end
+}
+
+.plain.toggle {
+    border: 1px solid #3b4436;
+    border-radius: 2px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #8e998a;
+    transition: border-color .18s, color .18s, background .18s
+}
+
+.plain.toggle:hover {
+    border-color: #7d8a69;
+    color: #c9d2b8
+}
+
+.plain.toggle.on {
+    border-color: #6c7a59;
+    background: #2f3829;
+    color: var(--accent)
+}
+
+/* Light pollution that politely leaves the switch alone too. */
+.plain.toggle.on.rgb {
+    border-color: #7d8a69;
+    animation: rgb-cycle 5s linear infinite
+}
+
+@keyframes rgb-cycle {
+    to {
+        filter: hue-rotate(360deg)
+    }
+}
+
+@media(prefers-reduced-motion:reduce) {
+    .plain.toggle.on.rgb {
+        animation: none
+    }
+}
+
+.scale {
+    position: absolute;
+    right: 25px;
+    bottom: 100px;
+    display: grid;
+    grid-template-columns: 8px 16px;
+    gap: 10px;
+    font-size: 12px;
+    color: #99a58d
+}
+
+.scale span:first-child {
+    grid-column: 1/3
+}
+
+.scale div {
+    grid-row: 2/4;
+    background: linear-gradient(#eff7b4, #a99c5e, #454c3c);
+    width: 5px;
+    height: 72px
+}
+
+.scale span:last-child {
+    align-self: end
+}
+
+aside {
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    padding: 27px 25px 18px
+}
+
+.panel-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 4px 0 29px
+}
+
+.panel-title>span:first-child {
+    font-size: 18px
+}
+
+aside section {
+    padding-bottom: 23px;
+    margin-bottom: 23px;
+    border-bottom: 1px solid var(--line)
+}
+
+.caption {
+    display: block;
+    color: #8e998a;
+    font: 12px var(--font-mono);
+    letter-spacing: 1px;
+    margin-bottom: 17px
+}
+
+.source-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    background: #101510;
+    border: 1px solid #31392d
+}
+
+.source-tabs button {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    font-size: 14px;
+    padding: 10px 0;
+    color: #8e998a
+}
+
+.source-tabs button.selected {
+    background: #3c4432;
+    color: #e4edc8
+}
+
+.source-note {
+    font-size: 11px;
+    line-height: 1.6;
+    color: #c9b878;
+    margin: 10px 0 0
+}
+
+.device-box {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid #3d4638;
+    background: #121812
+}
+
+.device-box label {
+    display: block;
+    font: 11px var(--font-mono);
+    letter-spacing: 1px;
+    color: #8e998a;
+    margin-bottom: 8px
+}
+
+.device-box select {
+    width: 100%;
+    border: 1px solid #3d4638;
+    background: #1b211a;
+    color: var(--text);
+    padding: 8px;
+    font: 12px var(--font-mono)
+}
+
+.device-box select:disabled {
+    opacity: .55
+}
+
+.device-start {
+    width: 100%;
+    margin-top: 10px;
+    border: 0;
+    background: #3c4432;
+    color: #e4edc8;
+    padding: 10px;
+    font-size: 13px
+}
+
+.device-start:not(:disabled):hover {
+    background: #48543a
+}
+
+.device-start:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.device-box small {
+    display: block;
+    margin-top: 9px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #89947f
+}
+
+.upload {
+    background: #20261d;
+    border: 1px dashed #535d44;
+    width: 100%;
+    margin-top: 14px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 25px 1fr;
+    text-align: left;
+    gap: 6px 10px
+}
+
+.upload>span {
+    grid-row: 1/3;
+    font-size: 25px;
+    align-self: center;
+    color: var(--accent)
+}
+
+.upload strong {
+    font-size: 14px;
+    font-weight: 400
+}
+
+.upload small {
+    font: 11px var(--font-mono);
+    color: #85917b
+}
+
+.upload:hover {
+    border-color: var(--accent);
+    background: #2a3222
+}
+
+.track {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 22px 0 10px;
+    min-width: 0
+}
+
+.track-icon {
+    font-size: 30px;
+    color: var(--accent)
+}
+
+.track>div {
+    flex: 1;
+    min-width: 0
+}
+
+.track strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 12px var(--font-mono)
+}
+
+.track small {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 6px
+}
+
+#play {
+    width: 38px;
+    height: 38px;
+    border: 0;
+    background: var(--accent);
+    color: #202617;
+    flex-shrink: 0;
+    border-radius: 50%;
+    font-size: 15px
+}
+
+.timeline>div {
+    display: flex;
+    justify-content: space-between;
+    font: 11px var(--font-mono);
+    color: var(--muted);
+    margin-top: 7px
+}
+
+input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 4px;
+    display: block;
+    margin: 13px 0;
+    cursor: pointer
+}
+
+#channels {
+    margin-bottom: 0
+}
+
+.auto-ch {
+    margin-left: 7px;
+    padding: 3px 7px;
+    border: 1px solid #4b5541;
+    background: transparent;
+    color: #8e998a;
+    font: 10px var(--font-mono);
+    letter-spacing: .5px;
+    vertical-align: 1px
+}
+
+.auto-ch:hover {
+    border-color: #7d8a69;
+    color: #c9d2b8
+}
+
+.auto-ch.on {
+    background: #3c4432;
+    border-color: #6c7a59;
+    color: var(--accent)
+}
+
+.slider-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-top: 22px
+}
+
+.slider-title output {
+    font: 13px var(--font-mono);
+    color: var(--accent)
+}
+
+.subtle {
+    font-size: 12px;
+    color: var(--muted)
+}
+
+.legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 13px;
+    font-size: 12px;
+    color: #b4bcaa
+}
+
+.legend i {
+    display: inline-block;
+    height: 7px;
+    width: 7px;
+    margin-right: 7px
+}
+
+.low {
+    background: #e6ba76
+}
+
+.mid {
+    background: #c5d185
+}
+
+.high {
+    background: #99b4a9
+}
+
+.meters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 18px
+}
+
+.meters>div>span {
+    font-size: 12px;
+    color: var(--muted)
+}
+
+.meters strong {
+    display: block;
+    font: 22px var(--font-mono);
+    margin: 7px 0 0;
+    white-space: nowrap
+}
+
+.meters small {
+    font: 11px var(--font-mono);
+    color: var(--muted);
+    margin-left: 4px
+}
+
+/* The spectrum lives inside the meters grid, so it has to claim the full row:
+   a half-width cell leaves 136px for 48 bars, which is not enough to draw. */
+.meters>.spectrum-cell {
+    grid-column: 1/-1;
+    margin-top: 2px
+}
+
+.meters>.spectrum-cell>span {
+    display: block;
+    margin-bottom: 5px
+}
+
+/* Three small performance figures on one line: they change every frame, so they
+   are deliberately quieter than the audio readouts. */
+.perf-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px 12px;
+    margin-bottom: 18px
+}
+
+.perf-grid>div>span {
+    display: block;
+    font-size: 12px;
+    color: var(--muted)
+}
+
+.perf-grid strong {
+    display: block;
+    margin-top: 5px;
+    font: 17px var(--font-mono);
+    color: #d3dcc4
+}
+
+.perf-grid small {
+    margin-left: 3px;
+    font-size: 10px;
+    color: #77826f
+}
+
+/* Segmented control: one row, three backends, no dropdown. */
+.backend-switch {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px
+}
+
+.backend {
+    padding: 7px 4px;
+    border: 1px solid #3b4436;
+    background: transparent;
+    color: #8e998a;
+    font: 12px var(--font-sans);
+    letter-spacing: .5px;
+    transition: border-color .18s, color .18s, background .18s
+}
+
+.backend:hover:not(:disabled) {
+    border-color: #7d8a69;
+    color: #c9d2b8
+}
+
+.backend.on {
+    border-color: #6c7a59;
+    background: #2f3829;
+    color: var(--accent)
+}
+
+.backend:disabled {
+    opacity: .38;
+    cursor: not-allowed
+}
+
+.backend-note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #a9906a
+}
+
+#spectrum {
+    width: 100%;
+    height: 44px;
+    display: block
+}
+
+.readings {
+    margin-bottom: 13px;
+    padding-bottom: 14px
+}
+
+#message {
+    font-size: 12px;
+    color: #8f9a85;
+    line-height: 1.7;
+    margin: 0
+}
+
+footer {
+    border-top: 1px solid var(--line);
+    min-height: 49px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 34px;
+    font: 11px var(--font-mono);
+    color: #87917e;
+    gap: 15px
+}
+
+footer b {
+    color: var(--accent);
+    margin-right: 8px
+}
+
+footer span:nth-child(2) {
+    font: 12px Arial
+}
+
+@media(min-width:1500px) {
+    main {
+        grid-template-columns: minmax(0, 1fr) 370px
+    }
+
+    aside {
+        padding: 30px
+    }
+
+    .stage {
+        min-height: 760px
+    }
+}
+
+@media(max-width:1000px) {
+    .edition {
+        display: none
+    }
+
+    .live {
+        top: 108px;
+        left: 34px;
+        right: auto
+    }
+
+    main {
+        grid-template-columns: minmax(0, 1fr) 300px
+    }
+
+    aside {
+        padding: 25px 20px
+    }
+
+    .stage {
+        min-height: 720px
+    }
+}
+
+@media(max-width:700px) {
+    header {
+        height: 70px;
+        padding: 0 20px
+    }
+
+    .brand {
+        font-size: 20px
+    }
+
+    .top-note {
+        display: none
+    }
+
+    header>.plain {
+        margin-left: auto
+    }
+
+    main {
+        display: block
+    }
+
+    .stage {
+        height: 65svh;
+        min-height: 450px
+    }
+
+    .stage-title {
+        top: 24px;
+        left: 20px
+    }
+
+    h1 {
+        font-size: 22px
+    }
+
+    .live {
+        top: 103px;
+        left: 20px
+    }
+
+    /* The stage is short here, so its bottom edge is on screen: the switches go
+       back down there, out of the way of the title. */
+    .stage-toggles {
+        top: auto;
+        bottom: 16px;
+        right: 16px
+    }
+
+    aside {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        padding: 25px
+    }
+
+    .stage-bottom,
+    .axis {
+        left: 20px
+    }
+
+    .axis {
+        font-size: 10px
+    }
+
+    .scale {
+        right: 18px
+    }
+
+    .desktop {
+        display: none
+    }
+
+    /* Three labelled buttons do not fit next to the drag hint, so the stage
+       switches fall back to their glyphs (each keeps an aria-label). */
+    .stage-toggles .wide {
+        display: none
+    }
+
+    footer {
+        padding: 18px 20px;
+        flex-wrap: wrap
+    }
+
+    footer span:last-child {
+        display: none
+    }
+
+    .panel-title {
+        margin-bottom: 24px
+    }
+}
+/* Boot / error states for the WASM kernel load. */
+.boot {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    font: 13px var(--font-mono);
+    padding: 24px;
+    text-align: center
+}
+
+.boot p {
+    margin: 0
+}
+
+.boot-error {
+    color: #d8a979
+}
+
+.boot-error code {
+    color: var(--text);
+    font-size: 12px;
+    max-width: 70ch;
+    overflow-wrap: anywhere
+}
+
+/* Analysis-thread badge in the readouts caption. */
+.caption .thread {
+    float: right;
+    font: 10px var(--font-mono);
+    letter-spacing: .5px;
+    color: #7d8874
+}
+
+.caption .thread.on-thread {
+    color: var(--accent)
+}
+
+/*
+ * MiSans is proportional, so every place that used to be `monospace` opts into
+ * its `tnum` feature to keep digits on a fixed advance width.
+ * This block has to stay last in the file: the `font` shorthand used by those
+ * same rules resets `font-variant-numeric` back to `normal`, and only a later
+ * declaration of equal specificity wins that cascade.
+ */
+.meters strong,
+.timeline>div,
+.slider-title output,
+.track strong,
+.axis,
+#analysis {
+    font-variant-numeric: tabular-nums
+}

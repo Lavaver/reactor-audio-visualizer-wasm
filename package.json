@@ -1,0 +1,27 @@
+{
+  "name": "reactor-audio-visualizer-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:wasm": "cargo build --manifest-path wasm/Cargo.toml --target wasm32-unknown-unknown --release && node scripts/copy-wasm.mjs",
+    "predev": "pnpm run build:wasm",
+    "dev": "vite",
+    "prebuild": "pnpm run build:wasm",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check:kernel": "pnpm run build:wasm && node scripts/kernel-check.mjs"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "@webgpu/types": "^0.1.74",
+    "typescript": "^5.9.2",
+    "vite": "^8.3.7"
+  }
+}
